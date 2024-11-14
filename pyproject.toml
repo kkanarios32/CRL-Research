@@ -1,0 +1,23 @@
+[project]
+name = "crl-research"
+version = "0.1.0"
+description = "Research repository for continual / unsupervised reinforcement learning experiments"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "brax==0.10.5",
+    "chex==0.1.86",
+    "dm-haiku==0.0.11",
+    "flax==0.8.3",
+    "jaxlib==0.4.25+cuda12.cudnn89",
+    "matplotlib==3.8.4",
+    "mujoco==3.2.3",
+    "nvidia-cudnn-cu12==8.9.7.29",
+    "pyinstrument==4.6.2",
+    "scikit-image==0.22.0",
+    "scipy==1.12.0",
+    "six==1.16.0",
+    "stack-data==0.6.3",
+    "statsmodels==0.14.1",
+    "wandb>=0.18.5",
+]
