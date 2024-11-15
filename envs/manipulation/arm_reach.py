@@ -24,11 +24,12 @@ class ArmReach(ArmEnvs):
     # See ArmEnvs._set_environment_attributes for descriptions of attributes
     def _set_environment_attributes(self):
         self.env_name = "arm_reach"
-        self.episode_length = 50
+        self.episode_length = 100
 
         self.goal_indices = jnp.array([7, 8, 9]) # End-effector position
         self.completion_goal_indices = jnp.array([7, 8, 9]) # Identical
         self.state_dim = 13
+        self.goal_dist = 0.1
 
         self.arm_noise_scale = 0
         self.goal_noise_scale = 0.2
@@ -36,7 +37,7 @@ class ArmReach(ArmEnvs):
     def _get_initial_state(self, rng):
         target_q = self.sys.init_q[:7]
         arm_q_default = jnp.array([1.571, 0.742, 0, -1.571, 0, 3.054, 1.449]) # Start closer to the relevant area
-        arm_q = arm_q_default + self.arm_noise_scale * jax.random.uniform(subkey2, [self.sys.q_size() - 7], minval=-1)
+        arm_q = arm_q_default + self.arm_noise_scale * jax.random.uniform(rng, [self.sys.q_size() - 7], minval=-1)
         
         q = jnp.concatenate([target_q] + [arm_q])
         qd = jnp.zeros([self.sys.qd_size()])
@@ -55,7 +56,7 @@ class ArmReach(ArmEnvs):
         goal_eef_pos = goal[:3]
         dist = jnp.linalg.norm(eef_pos - goal_eef_pos)
 
-        success = jnp.array(dist < 0.1, dtype=float)
+        success = jnp.array(dist < self.goal_dist, dtype=float)
         success_easy = jnp.array(dist < 0.3, dtype=float)
         success_hard = jnp.array(dist < 0.03, dtype=float)
         
