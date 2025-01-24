@@ -29,9 +29,11 @@ class QueueBase(ReplayBuffer[ReplayBufferState, Sample], Generic[Sample]):
         num_envs: int,
         episode_length: int,
     ):
-        self._flatten_fn = jax.vmap(jax.vmap(lambda x: flatten_util.ravel_pytree(x)[0]))
+        self._flatten_fn = jax.vmap(
+            jax.vmap(lambda x: flatten_util.ravel_pytree(x)[0]))
 
-        dummy_flatten, self._unflatten_fn = flatten_util.ravel_pytree(dummy_data_sample)
+        dummy_flatten, self._unflatten_fn = flatten_util.ravel_pytree(
+            dummy_data_sample)
         self._unflatten_fn = jax.vmap(jax.vmap(self._unflatten_fn))
         data_size = len(dummy_flatten)
 
@@ -53,7 +55,8 @@ class QueueBase(ReplayBuffer[ReplayBufferState, Sample], Generic[Sample]):
     def check_can_insert(self, buffer_state, samples, shards):
         """Checks whether insert operation can be performed."""
         assert isinstance(shards, int), "This method should not be JITed."
-        insert_size = jax.tree_util.tree_flatten(samples)[0][0].shape[0] // shards
+        insert_size = jax.tree_util.tree_flatten(
+            samples)[0][0].shape[0] // shards
         if self._data_shape[0] < insert_size:
             raise ValueError(
                 "Trying to insert a batch of samples larger than the maximum replay"
@@ -87,11 +90,13 @@ class QueueBase(ReplayBuffer[ReplayBufferState, Sample], Generic[Sample]):
         # `update` after the current position.
         position = buffer_state.insert_position
         roll = jnp.minimum(0, len(data) - position - len(update))
-        data = jax.lax.cond(roll, lambda: jnp.roll(data, roll, axis=0), lambda: data)
+        data = jax.lax.cond(roll, lambda: jnp.roll(
+            data, roll, axis=0), lambda: data)
         position = position + roll
 
         # Update the buffer and the control numbers.
-        data = jax.lax.dynamic_update_slice_in_dim(data, update, position, axis=0)
+        data = jax.lax.dynamic_update_slice_in_dim(
+            data, update, position, axis=0)
         position = (position + len(update)) % (len(data) + 1)
         sample_position = jnp.maximum(0, buffer_state.sample_position + roll)
 
@@ -100,10 +105,12 @@ class QueueBase(ReplayBuffer[ReplayBufferState, Sample], Generic[Sample]):
             insert_position=position,
             sample_position=sample_position,
         )
+
     def sample_internal(
         self, buffer_state: ReplayBufferState
     ) -> Tuple[ReplayBufferState, Sample]:
-        raise NotImplementedError(f"{self.__class__}.sample() is not implemented.")
+        raise NotImplementedError(
+            f"{self.__class__}.sample() is not implemented.")
 
     def size(self, buffer_state: ReplayBufferState) -> int:
         return (
@@ -127,20 +134,24 @@ class TrajectoryUniformSamplingQueue(QueueBase[Sample], Generic[Sample]):
     def sample_internal(self, buffer_state: ReplayBufferState) -> Tuple[ReplayBufferState, Sample]:
         if buffer_state.data.shape != self._data_shape:
             raise ValueError(
-                f"Data shape expected by the replay buffer ({self._data_shape}) does "
-                f"not match the shape of the buffer state ({buffer_state.data.shape})"
+                f"Data shape expected by the replay buffer ({
+                    self._data_shape}) does "
+                f"not match the shape of the buffer state ({
+                    buffer_state.data.shape})"
             )
         key, sample_key, shuffle_key = jax.random.split(buffer_state.key, 3)
         # NOTE: this is the number of envs to sample but it can be modified if there is OOM
         shape = self.num_envs
 
         # Sampling envs idxs
-        envs_idxs = jax.random.choice(sample_key, jnp.arange(self.num_envs), shape=(shape,), replace=False)
+        envs_idxs = jax.random.choice(sample_key, jnp.arange(
+            self.num_envs), shape=(shape,), replace=False)
 
         @functools.partial(jax.jit, static_argnames=("rows", "cols"))
         def create_matrix(rows, cols, min_val, max_val, rng_key):
             rng_key, subkey = jax.random.split(rng_key)
-            start_values = jax.random.randint(subkey, shape=(rows,), minval=min_val, maxval=max_val)
+            start_values = jax.random.randint(
+                subkey, shape=(rows,), minval=min_val, maxval=max_val)
             row_indices = jnp.arange(cols)
             matrix = start_values[:, jnp.newaxis] + row_indices
             return matrix
@@ -171,21 +182,26 @@ class TrajectoryUniformSamplingQueue(QueueBase[Sample], Generic[Sample]):
         # Because it's vmaped transition obs.shape is of shape (transitions,obs_dim)
         seq_len = transition.observation.shape[0]
         arrangement = jnp.arange(seq_len)
-        is_future_mask = jnp.array(arrangement[:, None] < arrangement[None], dtype=jnp.float32)
-        discount = config.discounting ** jnp.array(arrangement[None] - arrangement[:, None], dtype=jnp.float32)
+        is_future_mask = jnp.array(
+            arrangement[:, None] < arrangement[None], dtype=jnp.float32)
+        discount = config.discounting ** jnp.array(
+            arrangement[None] - arrangement[:, None], dtype=jnp.float32)
         probs = is_future_mask * discount
         single_trajectories = jnp.concatenate(
             [transition.extras["state_extras"]["traj_id"][:, jnp.newaxis].T] * seq_len, axis=0
         )
-        probs = probs * jnp.equal(single_trajectories, single_trajectories.T) + jnp.eye(seq_len) * 1e-5
+        probs = probs * jnp.equal(single_trajectories,
+                                  single_trajectories.T) + jnp.eye(seq_len) * 1e-5
 
         goal_index = jax.random.categorical(goal_key, jnp.log(probs))
-        future_state = jnp.take(transition.observation, goal_index[:-1], axis=0)
+        future_state = jnp.take(transition.observation,
+                                goal_index[:-1], axis=0)
         future_action = jnp.take(transition.action, goal_index[:-1], axis=0)
         goal = future_state[:, env.goal_indices]
         future_state = future_state[:, :env.state_dim]
         state = transition.observation[:-1, :env.state_dim]
-        new_obs = jnp.concatenate([state, goal], axis=1)
+        obstacle = transition.observation[:-1, env.ob_indices]
+        new_obs = jnp.concatenate([state, obstacle, goal], axis=1)
 
         extras = {
             "policy_extras": {},

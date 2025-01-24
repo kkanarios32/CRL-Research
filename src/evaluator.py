@@ -5,6 +5,7 @@ from brax.training import acting
 from brax.training.types import Metrics
 from brax.training.types import PolicyParams
 
+
 class CrlEvaluator(acting.Evaluator):
     """
     CrlEvaluator class for running evaluation epochs in a training process.
@@ -19,6 +20,7 @@ class CrlEvaluator(acting.Evaluator):
     but additionally it aggregates metrics with max, min.
     It also logs in how many episodes there was any success.
     """
+
     def run_evaluation(
         self,
         policy_params: PolicyParams,
@@ -56,11 +58,17 @@ class CrlEvaluator(acting.Evaluator):
             metrics["eval/episode_success_any"] = np.mean(
                 eval_metrics.episode_metrics["success"] > 0.0
             )
+        if "violation" in eval_metrics.episode_metrics:
+            metrics["eval/episode_violation_any"] = np.mean(
+                eval_metrics.episode_metrics["violation"] > 0.0
+            )
 
-        metrics["eval/avg_episode_length"] = np.mean(eval_metrics.episode_steps)
+        metrics["eval/avg_episode_length"] = np.mean(
+            eval_metrics.episode_steps)
         metrics["eval/epoch_eval_time"] = epoch_eval_time
         metrics["eval/sps"] = self._steps_per_unroll / epoch_eval_time
         self._eval_walltime = self._eval_walltime + epoch_eval_time
-        metrics = {"eval/walltime": self._eval_walltime, **training_metrics, **metrics}
+        metrics = {"eval/walltime": self._eval_walltime,
+                   **training_metrics, **metrics}
 
         return metrics  # pytype: disable=bad-return-type  # jax-ndarray

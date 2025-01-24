@@ -31,7 +31,8 @@ class Ant(PipelineEnv):
         goal_distance=10,
         **kwargs,
     ):
-        path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "assets", "ant.xml")
+        path = os.path.join(os.path.dirname(
+            os.path.realpath(__file__)), "assets", "ant.xml")
         sys = mjcf.load(path)
 
         n_frames = 5
@@ -52,7 +53,8 @@ class Ant(PipelineEnv):
 
         if backend == "positional":
             # TODO: does the same actuator strength work as in spring
-            sys = sys.replace(actuator=sys.actuator.replace(gear=200 * jnp.ones_like(sys.actuator.gear)))
+            sys = sys.replace(actuator=sys.actuator.replace(
+                gear=200 * jnp.ones_like(sys.actuator.gear)))
 
         kwargs["n_frames"] = kwargs.get("n_frames", n_frames)
 
@@ -70,8 +72,10 @@ class Ant(PipelineEnv):
         self.dense_reward = dense_reward
         self.state_dim = 29
         self.goal_indices = jnp.array([0, 1])
+        self.ob_indices = jnp.array([29, 30])
         self.goal_reach_thresh = 0.5
         self.goal_distance = goal_distance
+        self.randomize_start = randomize_start
 
         if self._use_contact_forces:
             raise NotImplementedError("use_contact_forces not implemented.")
@@ -82,13 +86,16 @@ class Ant(PipelineEnv):
         rng, rng1, rng2 = jax.random.split(rng, 3)
 
         low, hi = -self._reset_noise_scale, self._reset_noise_scale
-        q = self.sys.init_q + jax.random.uniform(rng1, (self.sys.q_size(),), minval=low, maxval=hi)
+        q = self.sys.init_q + \
+            jax.random.uniform(rng1, (self.sys.q_size(),),
+                               minval=low, maxval=hi)
         qd = hi * jax.random.normal(rng2, (self.sys.qd_size(),))
 
         # set the target q, qd
         rng, target = self._random_target(rng)
-        q = q.at[-2:].set(target)
-        qd = qd.at[-2:].set(0)
+        obstacle = jnp.array([1, 1])
+        q = q.at[-4:].set(jnp.concatenate([obstacle, target]))
+        qd = qd.at[-4:].set(0)
 
         if self.randomize_start:
             _, start_delta = self._random_target(rng)
@@ -113,6 +120,7 @@ class Ant(PipelineEnv):
             "dist": zero,
             "success": zero,
             "success_easy": zero,
+            "violation": zero
         }
         state = State(pipeline_state, obs, reward, done, metrics)
         return state
@@ -122,12 +130,14 @@ class Ant(PipelineEnv):
         pipeline_state0 = state.pipeline_state
         pipeline_state = self.pipeline_step(pipeline_state0, action)
 
-        velocity = (pipeline_state.x.pos[0] - pipeline_state0.x.pos[0]) / self.dt
+        velocity = (pipeline_state.x.pos[0] -
+                    pipeline_state0.x.pos[0]) / self.dt
         forward_reward = velocity[0]
 
         min_z, max_z = self._healthy_z_range
         is_healthy = jnp.where(pipeline_state.x.pos[0, 2] < min_z, 0.0, 1.0)
-        is_healthy = jnp.where(pipeline_state.x.pos[0, 2] > max_z, 0.0, is_healthy)
+        is_healthy = jnp.where(
+            pipeline_state.x.pos[0, 2] > max_z, 0.0, is_healthy)
         if self._terminate_when_unhealthy:
             healthy_reward = self._healthy_reward
         else:
@@ -139,9 +149,11 @@ class Ant(PipelineEnv):
         old_dist = jnp.linalg.norm(old_obs[:2] - old_obs[-2:])
         obs = self._get_obs(pipeline_state)
         dist = jnp.linalg.norm(obs[:2] - obs[-2:])
+        ob_dist = jnp.linalg.norm(obs[:2] - obs[-4:-2])
         vel_to_target = (old_dist - dist) / self.dt
         success = jnp.array(dist < self.goal_reach_thresh, dtype=float)
         success_easy = jnp.array(dist < 2.0, dtype=float)
+        violation = jnp.array(ob_dist < self.goal_reach_thresh, dtype=float)
 
         if self.dense_reward:
             reward = 10 * vel_to_target + healthy_reward - ctrl_cost - contact_cost
@@ -163,21 +175,23 @@ class Ant(PipelineEnv):
             dist=dist,
             success=success,
             success_easy=success_easy,
+            violation=violation
         )
         return state.replace(pipeline_state=pipeline_state, obs=obs, reward=reward, done=done)
 
     def _get_obs(self, pipeline_state: base.State) -> jax.Array:
         """Observe ant body position and velocities."""
         # remove target q, qd
-        qpos = pipeline_state.q[:-2]
-        qvel = pipeline_state.qd[:-2]
+        qpos = pipeline_state.q[:-4]
+        qvel = pipeline_state.qd[:-4]
 
+        ob_pos = pipeline_state.x.pos[-2][:2]
         target_pos = pipeline_state.x.pos[-1][:2]
 
         if self._exclude_current_positions_from_observation:
             qpos = qpos[2:]
 
-        return jnp.concatenate([qpos] + [qvel] + [target_pos])
+        return jnp.concatenate([qpos] + [qvel] + [ob_pos] + [target_pos])
 
     def _random_target(self, rng: jax.Array) -> Tuple[jax.Array, jax.Array]:
         """Returns a target location in a random circle slightly above xy plane."""

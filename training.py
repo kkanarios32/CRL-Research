@@ -35,9 +35,9 @@ def main(args):
     eval_env = create_eval_env(args)
     config = get_env_config(args)
 
-
     os.makedirs('./runs', exist_ok=True)
-    run_dir = './runs/run_{name}_s_{seed}'.format(name=args.exp_name, seed=args.seed)
+    run_dir = './runs/run_{name}_s_{seed}'.format(
+        name=args.exp_name, seed=args.seed)
     ckpt_dir = run_dir + '/ckpt'
     os.makedirs(run_dir, exist_ok=True)
     os.makedirs(ckpt_dir, exist_ok=True)
@@ -81,6 +81,7 @@ def main(args):
         "eval/episode_success_any",
         "eval/episode_success_hard",
         "eval/episode_success_easy",
+        "eval/episode_violation_any",
         "eval/episode_dist",
         "eval/episode_reward_survive",
         "training/crl_critic_loss",
@@ -103,10 +104,13 @@ def main(args):
         "training/l_unif",
     ]
 
-    metrics_recorder = MetricsRecorder(args.num_timesteps, metrics_to_collect, run_dir, args.exp_name)
+    metrics_recorder = MetricsRecorder(
+        args.num_timesteps, metrics_to_collect, run_dir, args.exp_name)
 
-    make_policy, params, _ = train_fn(environment=env, progress_fn=metrics_recorder.progress)
+    make_policy, params, _ = train_fn(
+        environment=env, progress_fn=metrics_recorder.progress)
     model.save_params(ckpt_dir + '/final', params)
+
 
 if __name__ == "__main__":
     parser = create_parser()
